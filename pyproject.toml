@@ -1,7 +1,10 @@
 [project]
 name = "isoface"
 version = "0.1.0"
-description = "Add your description here"
+description = "Face clustering using ArcFace embeddings and DBSCAN - CPU optimized with ONNX Runtime"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+
+[project.scripts]
+isoface = "main:main"
