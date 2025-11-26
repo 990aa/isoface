@@ -440,7 +440,7 @@ def run_demo(
 
     # Organize into folders
     print("-" * 40)
-    print("Phase 3: Organizing Photos")
+    print("Phase 4: Organizing Photos" if auto_tune else "Phase 3: Organizing Photos")
     print("-" * 40)
 
     clusters = clusterer.organize_photos(labels, output_dir)
@@ -503,6 +503,11 @@ def main():
         action="store_true",
         help="Process all images (ignore --max-people)",
     )
+    parser.add_argument(
+        "--auto-tune",
+        action="store_true",
+        help="Auto-tune eps parameter by testing multiple values",
+    )
 
     args = parser.parse_args()
 
@@ -514,6 +519,7 @@ def main():
         eps=args.eps,
         min_samples=args.min_samples,
         max_people=max_people,
+        auto_tune=args.auto_tune,
     )
 
 
