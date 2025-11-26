@@ -217,6 +217,92 @@ class FaceClusterer:
 
         return stats
 
+    def auto_tune(
+        self,
+        eps_values: list[float] | None = None,
+        min_samples: int = 2,
+    ) -> tuple[float, list[dict]]:
+        """
+        Auto-tune the eps parameter by testing multiple values.
+        
+        Helps find the optimal eps by showing how many groups are found
+        vs how many faces are left uncategorized for each value.
+
+        Args:
+            eps_values: List of eps values to test (default: [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7])
+            min_samples: Minimum samples to form a cluster (kept at 2 to catch small groups)
+
+        Returns:
+            Tuple of (recommended_eps, list of results for each eps)
+        """
+        if len(self.embeddings) == 0:
+            print("No embeddings to tune! Process images first.")
+            return 0.5, []
+
+        if eps_values is None:
+            eps_values = [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]
+
+        embeddings_array = np.array(self.embeddings)
+        results = []
+
+        print("\n" + "=" * 60)
+        print("AUTO-TUNER: Finding Optimal EPS Value")
+        print("=" * 60)
+        print(f"\nTesting {len(eps_values)} different eps values...")
+        print(f"Total faces to cluster: {len(embeddings_array)}")
+        print(f"min_samples fixed at: {min_samples}\n")
+
+        print(f"{'EPS':<10} | {'Found Groups':<15} | {'Uncategorized':<15} | {'Recommendation'}")
+        print("-" * 70)
+
+        best_eps = eps_values[0]
+        best_score = -1
+
+        for eps in eps_values:
+            clt = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine")
+            clt.fit(embeddings_array)
+
+            # Count groups (excluding -1 which is noise)
+            num_groups = len(set(clt.labels_)) - (1 if -1 in clt.labels_ else 0)
+            num_noise = list(clt.labels_).count(-1)
+
+            # Score: balance between groups found and noise reduced
+            # Higher groups + lower noise = better
+            noise_ratio = num_noise / len(embeddings_array) if len(embeddings_array) > 0 else 1
+            score = num_groups * (1 - noise_ratio)
+
+            # Determine recommendation
+            if noise_ratio > 0.7:
+                recommendation = "Too strict"
+            elif noise_ratio < 0.1 and num_groups < 3:
+                recommendation = "Too loose (merged)"
+            elif 0.1 <= noise_ratio <= 0.4:
+                recommendation = "★ Good balance"
+            else:
+                recommendation = "Acceptable"
+
+            if score > best_score:
+                best_score = score
+                best_eps = eps
+
+            result = {
+                "eps": eps,
+                "num_groups": num_groups,
+                "num_noise": num_noise,
+                "noise_ratio": noise_ratio,
+                "score": score,
+                "recommendation": recommendation,
+            }
+            results.append(result)
+
+            print(f"{eps:<10} | {num_groups:<15} | {num_noise:<15} | {recommendation}")
+
+        print("-" * 70)
+        print(f"\n★ Recommended EPS: {best_eps}")
+        print("  (Highest groups with lowest uncategorized ratio)\n")
+
+        return best_eps, results
+
 
 def download_lfw_dataset() -> str:
     """
@@ -280,6 +366,7 @@ def run_demo(
     eps: float = 0.5,
     min_samples: int = 3,
     max_people: int | None = 10,
+    auto_tune: bool = False,
 ):
     """
     Run the face clustering demo.
@@ -290,6 +377,7 @@ def run_demo(
         eps: DBSCAN eps parameter (distance threshold)
         min_samples: Minimum samples to form a cluster
         max_people: Limit processing to first N people (for demo speed)
+        auto_tune: If True, run auto-tuner to find optimal eps
     """
     print("=" * 60)
     print("IsoFace: Face Clustering Demo")
@@ -334,9 +422,18 @@ def run_demo(
         print("No faces found in the dataset!")
         return
 
+    # Auto-tune if requested
+    if auto_tune:
+        print("-" * 40)
+        print("Phase 2: Auto-Tuning EPS Parameter")
+        print("-" * 40)
+        recommended_eps, tune_results = clusterer.auto_tune(min_samples=min_samples)
+        eps = recommended_eps
+        print(f"Using auto-tuned eps={eps}\n")
+
     # Cluster faces
     print("-" * 40)
-    print("Phase 2: Clustering with DBSCAN")
+    print("Phase 3: Clustering with DBSCAN" if auto_tune else "Phase 2: Clustering with DBSCAN")
     print("-" * 40)
 
     labels = clusterer.cluster(eps=eps, min_samples=min_samples)
